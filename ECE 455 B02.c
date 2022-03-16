@@ -24,6 +24,7 @@
 #define schQUEUE_LENGTH 3
 #define genQUEUE_LENGTH 3
 #define tcQUEUE_LENGTH 3
+
 // Then you need to define structures here : 
 enum task_Types {
 // You need to complete this part
@@ -52,16 +53,17 @@ typedef struct
 {
     // You need to complete this part
 } auxTPARAM;
-// ******** / Tasks
-/**************************************************************
- **************************************************************************/
 
- static void DD_Scheduler( void *pvParameters );
+/* Tasks */
+/*****************************************************************************/
+
+static void DD_Scheduler( void *pvParameters );
 static void Task_Generator( void *pvParameters );
 static void Auxiliary_Task( void *pvParameters );
 static void Task_Monitor (void *pvParameters );
 
-// local Functions         /************************************************/
+/* local Functions */
+/*****************************************************************************/
 
 static TaskHandle_t dd_tcreate(auxTPARAM* auxtParameter, const char * const task_name);
 static BaseType_t dd_delete(TaskHandle_t TaskToDelet );
@@ -74,7 +76,8 @@ static void print_list(node *head );
 static void Delay_Init(void );
 static void prvSetupHardware( void );
 
-// local Functions /*******************************************************/
+/* local Variables */
+/*****************************************************************************/
 
 node * head = NULL;
 node * overdue_head = NULL;
@@ -109,7 +112,10 @@ main(void)
     return 0;
 }
 
-// DD_Scheduler : 
+/*
+ * DD_Scheduler
+ * 
+ */
 static void DD_Scheduler(void *pvParameters)
 {
     tcMSG sch_msg;
@@ -167,7 +173,10 @@ static void DD_Scheduler(void *pvParameters)
             }
         }
     }
-    // Task Generator : 
+/*
+ * Task Generator
+ *
+ */
 static void Task_Generator(void *pvParameters)
 {
     auxTPARAM pTaskParameters;
@@ -190,20 +199,25 @@ static void Task_Generator(void *pvParameters)
             {
                 // calculate deadline of next periodic task
                 // = previous deadline + relative deadline
-            // TODO: complete here
-            // calculate time until task should be created (its period)
-            // TODO: complete here
-            // ensure sleep_time is not negative
-            // this happens often when a task is overdue, and its next start
-            // time is the current time
-            // this sometimes results in a small negative value for
-            // sleep_time
-            // TODO: complete here
-            // creates the next task (new absolute deadline, same execution
-            // and relative deadline)
-            // TODO: complete here
+                // TODO: complete here
+                // calculate time until task should be created (its period)
+                // TODO: complete here
+                // ensure sleep_time is not negative
+                // this happens often when a task is overdue, and its next start
+                // time is the current time
+                // this sometimes results in a small negative value for
+                // sleep_time
+                // TODO: complete here
+                // creates the next task (new absolute deadline, same execution
+                // and relative deadline)
+                // TODO: complete here
     }
 }
+
+/*
+ * Task Monitor
+ *
+ */
 static void Task_Monitor(void *pvParameters)
 {
     while (1)
@@ -216,6 +230,11 @@ static void Task_Monitor(void *pvParameters)
         vTaskDelay(10000);
     }
 }
+
+/*
+ * Auxillary Task
+ *
+ */
 static void Auxiliary_Task(void *pvParameters)
 {
     auxTPARAM *AuxTaskParam = (auxTPARAM *)pvParameters;
@@ -230,6 +249,11 @@ static void Auxiliary_Task(void *pvParameters)
         dd_delete(xTaskGetCurrentTaskHandle());
     }
 }
+
+/*
+ * dd_create
+ *
+ */
 static TaskHandle_t dd_tcreate(auxTPARAM * auxtParameter, const char *const task_name)
 {
     BaseType_t response = pdFAIL;
@@ -263,6 +287,11 @@ static TaskHandle_t dd_tcreate(auxTPARAM * auxtParameter, const char *const task
         return NULL;
     }
 }
+
+/*
+ * dd_delete
+ *
+ */
 static BaseType_t dd_delete(TaskHandle_t TaskToDelet)
 {
     BaseType_t response = pdFAIL;
@@ -285,6 +314,11 @@ static BaseType_t dd_delete(TaskHandle_t TaskToDelet)
     }
     else return pdFAIL;
 }
+
+/*
+ * dd_return_active_list
+ *
+ */
 static BaseType_t dd_return_active_list(void)
 {
     node *response = NULL;
@@ -310,6 +344,11 @@ static BaseType_t dd_return_active_list(void)
         return pdFAIL;
     }
 }
+
+/*
+ * dd_return_overdue_list
+ *
+ */
 static BaseType_t dd_return_overdue_list(void)
 {
     node *response = NULL;
@@ -335,7 +374,11 @@ static BaseType_t dd_return_overdue_list(void)
         return pdFAIL;
     }
 }
-/* Insert a task_list (in sorted order) into a (sorted) task list */
+
+/*
+ * insert_node
+ * Insert a task_list (in sorted order) into a (sorted) task list
+ */
 static BaseType_t insert_node(node * *head, node * new_node)
 {
     new_node->next = NULL;
@@ -346,11 +389,12 @@ static BaseType_t insert_node(node * *head, node * new_node)
         // new_task_list is not new head
         // TODO: complete here
 }
+
 /* Function to assign high priority to head of active list,
-    * and low priority to all other tasks in list.
-    * Additionally, this function modifies the 'CURRENT_SLEEP' value, which is
-    * the time until the next deadline.
-    */
+* and low priority to all other tasks in list.
+* Additionally, this function modifies the 'CURRENT_SLEEP' value, which is
+* the time until the next deadline.
+*/
 void adjust_prios(node * head)
 {
     UBaseType_t prio;
@@ -380,6 +424,7 @@ void adjust_prios(node * head)
     // recalculate scheduler sleep time as deadline of head task
     // TODO: complete here
 };
+
 /* Remove a specified task_list from a task list */
 static node *remove_node(node * *head, TaskHandle_t target)
 {
@@ -405,6 +450,7 @@ static node *remove_node(node * *head, TaskHandle_t target)
     }
     return deleted_node;
 }
+
 /* Outputs the task list */
 void print_list(node * head)
 {
@@ -417,6 +463,7 @@ void print_list(node * head)
         current = (node *)current->next;
     }
 }
+
 /*-----------------------------------------------------------*/
 static void Delay_Init(void)
 {
