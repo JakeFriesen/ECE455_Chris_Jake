@@ -551,36 +551,31 @@ static BaseType_t dd_return_complete_list(void)
  */
 static BaseType_t insert_node(node **head, node * new_node)
 {
-    printf("Insert node: %s\n", (char*)new_node->task_ptr->t_handle);
-    new_node->next = NULL;
+    printf("Insert node: %x\n", (char*)new_node->task_ptr->t_handle);
     node *current = *head;
-    node *old_node = current->next;
-    // list is empty or new_node is new head
-    if(current == NULL){
-//    	printf("current == NULL\n");
-//        new_node->next = *head;
-        current = new_node;
-    }else if(current->task_ptr->absolute_deadline < new_node->task_ptr->absolute_deadline){
-    	new_node->next = current;
-		current = new_node;
+    node *previous = *head;
+    
+    if(*head == NULL){
+        //Empty list
+        *head = new_node;
+        head->next = NULL;
+    }else if(current->task_ptr.absolute_deadline > new_node->task_ptr.absolute_deadline){
+        //New node inserted at the beginning of the list
+        //new_node->current->next->...
+        *head = new_node;
+        *head->next = current;
     }else{
-        //search for place to put node
-        while(current->next != NULL){
-            if(current->next->task_ptr->absolute_deadline < new_node->task_ptr->absolute_deadline){
-                //put new node here
-                old_node = current->next;
-                current->next = new_node;
-                new_node->next = old_node;
-                break;
-            }
-            current = current->next;
+        //search through list for place
+        while(current->task_ptr.absolute_deadline < new_node->task_ptr.absolute_deadline){
+            previous = current;//save the last node
+            current = current->next;//increment to the next node
         }
-        //put task at end of list
-        current->next = new_node;
+        //current node now has a later deadline than the new node
+        //head->....->previous->new_node->current
+        previous->next = new_node;
+        new_node->next = current;
     }
-    //update head
-    //TODO: This shouldn't happen right?
-    *head = current;
+    //Head shouldn't be updated because its all pass by reference, so it's fine
     return pdPASS;
 }
 
@@ -625,6 +620,23 @@ void adjust_priority(node * head)
 static node *remove_node(node * *head, TaskHandle_t target)
 {
     printf("Remove node: %x\n", (int)target);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     node *deleted_node = NULL;
     node *current = *head;
     node *temp_node = NULL;
