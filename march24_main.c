@@ -620,34 +620,16 @@ void adjust_priority(node * head)
 static node *remove_node(node * *head, TaskHandle_t target)
 {
     printf("Remove node: %x\n", (int)target);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     node *deleted_node = NULL;
     node *current = *head;
-    node *temp_node = NULL;
     // target is head of list
-    if ((*head)->task_ptr->t_handle == target)
+    if (current == NULL) {
+        return current;
+    } else if (current->task_ptr->t_handle == target)
     {
     	printf("target is the head\n");
-        current = current->next;
-        deleted_node = *head;
-        *head = current;
-
+        deleted_node = current;
+        *head = current->next;
     }
     // target is in middle of list
     else
@@ -656,8 +638,8 @@ static node *remove_node(node * *head, TaskHandle_t target)
         while (current->next != NULL){
             if(current->next->task_ptr->t_handle == target){
                 deleted_node = current->next;
-                temp_node = (node *)current->next->next;
-                current->next = temp_node;
+                current->next = deleted_node->next;
+                break;
             }
             current = current->next;
         }
