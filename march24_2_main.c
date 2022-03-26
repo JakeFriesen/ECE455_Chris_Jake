@@ -94,7 +94,7 @@ static void Task_Monitor (void *pvParameters );
 /* local Functions */
 /*****************************************************************************/
 
-static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t absolute_deadline, uint32_t execution_time, const char *const task_name);
+static BaseType_t dd_create(node* node_data, const char *const task_name);
 static BaseType_t dd_delete(uint32_t TaskToDelete);
 static BaseType_t dd_return_active_list(void );
 static BaseType_t dd_return_complete_list(void );
@@ -114,6 +114,10 @@ static BaseType_t unallocate_node(node* deleted_node);
 
 /* Global Variables */
 /*****************************************************************************/
+uint32_t task_id_arr[3]={100,200,300};
+uint32_t execution_arr[3] = {95,150,250};
+uint32_t relative_arr[3] = {500,500,750};
+
 
 node * head = NULL;
 node * completed_head = NULL;
@@ -154,21 +158,22 @@ int main(void)
 	vQueueAddToRegistry( xDDSQueue_handle, "ScheduleQueue" );
 	vQueueAddToRegistry( xDDSG_Queue_handle, "SchedulePeriodicQueue" );
     /* Start the tasks and timer running. */
-	gen_data *gen_data1;
-	gen_data1->task_id = 100;
-	gen_data1->execution_time = 500;
-	gen_data1->relative_deadline = 100;
-	gen_data *gen_data2;
-	gen_data2->task_id = 200;
-	gen_data2->execution_time = 150;
-	gen_data2->relative_deadline = 500;
-	gen_data *gen_data3;
-	gen_data3->task_id = 300;
-	gen_data3->execution_time = 250;
-	gen_data3->relative_deadline = 750;
+//	gen_data *gen_data1 = (gen_data*)pvPortMalloc(sizeof(gen_data));
+//	gen_data1->task_id = 100;
+//	gen_data1->execution_time = 500;
+//	gen_data1->relative_deadline = 100;
+//	gen_data *gen_data2 = (gen_data*)pvPortMalloc(sizeof(gen_data));
+//	gen_data2->task_id = 200;
+//	gen_data2->execution_time = 150;
+//	gen_data2->relative_deadline = 500;
+//	gen_data *gen_data3 = (gen_data*)pvPortMalloc(sizeof(gen_data));
+//	gen_data3->task_id = 300;
+//	gen_data3->execution_time = 250;
+//	gen_data3->relative_deadline = 750;
+	int gen_num = 0;
 
     xTaskCreate( DD_Scheduler, "DeadlineDrivenSchedulerTask", configMINIMAL_STACK_SIZE, NULL, DD_SCHEDULER_PRIO, NULL);
-    xTaskCreate( Task_Generator, "GeneratingTask1", configMINIMAL_STACK_SIZE, (void*)gen_data1, GENERATOR_PRIO, NULL);
+    xTaskCreate( Task_Generator, "GeneratingTask1", configMINIMAL_STACK_SIZE, (void*)gen_num, GENERATOR_PRIO, NULL);
 //    xTaskCreate( Task_Generator, "GeneratingTask2", configMINIMAL_STACK_SIZE, (void*)gen_data2, GENERATOR_PRIO, NULL);
 //    xTaskCreate( Task_Generator, "GeneratingTask3", configMINIMAL_STACK_SIZE, (void*)gen_data3, GENERATOR_PRIO, NULL);
     xTaskCreate( Task_Monitor, "MonitorTask", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
@@ -217,11 +222,13 @@ static void DD_Scheduler(void *pvParameters)
                     }
                     break;
                 case delete :
+//					while(1);
                     //Grab the node out of active list, put it into completed (no extra mem is allocated for this)
-                    schedule_node = remove_node(&head, schedule_message.node_ptr->task_id);
+                    schedule_node = remove_node(&head, schedule_message.sender);
                     if (schedule_node != NULL)
                     {
                         schedule_node->task_ptr->completion_time = xTaskGetTickCount() - START;
+                        printf("insert unsorted");
                         insert_node_unsorted(&completed_head, schedule_node);
 
                         response = pdPASS;
@@ -281,29 +288,48 @@ static void DD_Scheduler(void *pvParameters)
  *
  */
 static void Task_Generator(void *pvParameters)
-{    
-    uint32_t relative_deadline = ((gen_data*)pvParameters)->relative_deadline;
+{
+	uint32_t idx = (int)pvParameters;
+//    uint32_t relative_deadline = relative_arr[idx];
+	uint32_t relative_deadline = 500;
 
     //Get a new node for this task
-    node* task_node = allocate_node();
-    task_node->task_ptr->type = periodic; 
-	task_node->task_ptr->absolute_deadline = xTaskGetTickCount() - START + relative_deadline;
-	task_node->task_ptr->task_id = ((gen_data*)pvParameters)->task_id;
-	task_node->task_ptr->execution_time = ((gen_data*)pvParameters)->execution_time;
+    node* task_node = (node*)pvPortMalloc(sizeof(node));
+    dd_task* task = (dd_task*)pvPortMalloc(sizeof(dd_task));
+    task_node->task_ptr = task;
+	//Make sure there is mem available
+	configASSERT(task_node);
+	//Set default values for node
+	task_node->next = NULL;
+	task_node->task_ptr->type = periodic;
+	task_node->task_ptr->t_handle = NULL;
+	task_node->task_ptr->task_id = 100;
+	task_node->task_ptr->release_time = 0;
+	task_node->task_ptr->absolute_deadline = xTaskGetTickCount() - START + relative_deadline;;
+	task_node->task_ptr->completion_time = 0;
+	task_node->task_ptr->execution_time = 95;
 
+//    task_node->task_ptr->type = periodic;
+//	task_node->task_ptr->absolute_deadline = xTaskGetTickCount() - START + relative_deadline;
+////	task_node->task_ptr->task_id = task_id_arr[idx];
+//	task_node->task_ptr->task_id = 100;
+////	task_node->task_ptr->execution_time = execution_arr[idx];
+//	task_node->task_ptr->execution_time = 95;
+//	task_node->next = NULL;
 
+	printf("abs deadline: %d, task_id: %d\n",task_node->task_ptr->absolute_deadline,task_node->task_ptr->task_id );
     printf("Task Generator\n");
     while (1)
     {
         char task_name[10];
-        sprintf(task_name, "TASK%d", task_node->task_ptr->task_id);
+//        sprintf(task_name, "TASK%d", task_node->task_ptr->task_id);
 
     	xSemaphoreTake(create_semaphore_handle,100);
-    	if (dd_create(task_node , &task_name) == pdFAIL){
+    	if (dd_create(task_node , "TASK1") == pdFAIL){
     	        printf("dd_tcreate Failed!\n");
     	}
     	xSemaphoreGive(create_semaphore_handle);
-		
+
 		printf("Delaying in Generator\n");
 		vTaskDelay(relative_deadline);
 
@@ -364,7 +390,7 @@ static BaseType_t dd_create(node* node_data, const char *const task_name)
 {
     printf("dd_tcreate. Name: %s, task id: %d\n", task_name, node_data->task_ptr->task_id);
     printf("dd_Create: execution time: %d, absolute deadline: %d\n", node_data->task_ptr->execution_time, node_data->task_ptr->absolute_deadline);
-    
+
     BaseType_t response = pdFAIL;
     message message_create = {
     		.req = create,
@@ -393,7 +419,7 @@ static BaseType_t dd_create(node* node_data, const char *const task_name)
                 if (response == pdPASS)
                 {
                     printf("Created new Task!\n");
-                    //Resume the task 
+                    //Resume the task
                     vTaskResume(node_data->task_ptr->t_handle);
                     return pdPASS;
                 }
@@ -456,7 +482,7 @@ static BaseType_t dd_return_active_list(void)
     message message_active;
     message_active.req = active_task_list;
     message_active.node_ptr = NULL;
-    message_active.sender = xTaskGetCurrentTaskHandle();
+    message_active.sender = 0;//TODO: UPDATE THIS
 
     activeQueue_handle = xQueueCreate(message_QUEUE_LENGTH, sizeof( message ) );
     vQueueAddToRegistry(activeQueue_handle, "ActiveListQueue");
@@ -471,8 +497,6 @@ static BaseType_t dd_return_active_list(void)
                 print_list(response);
                 return pdPASS;
             }
-            else
-                return pdFAIL;
         }
     }
 
@@ -491,8 +515,8 @@ static BaseType_t dd_return_overdue_list(void)
     node *response = NULL;
     message message_overdue;
     message_overdue.req = overdue_task_list;
-    message_active.node_ptr = NULL;
-    message_active.sender = xTaskGetCurrentTaskHandle();
+    message_overdue.node_ptr = NULL;
+    message_overdue.sender = xTaskGetCurrentTaskHandle();
 
     //Create queue
     overdueQueue_handle = xQueueCreate(message_QUEUE_LENGTH, sizeof(response));
@@ -530,8 +554,8 @@ static BaseType_t dd_return_complete_list(void)
     node *response = NULL;
     message message_completed;
     message_completed.req = completed_task_list;
-    message_active.node_ptr = NULL;
-    message_active.sender = xTaskGetCurrentTaskHandle();
+    message_completed.node_ptr = NULL;
+    message_completed.sender = xTaskGetCurrentTaskHandle();
 
     //Create queue
     completedQueue_handle = xQueueCreate(message_QUEUE_LENGTH, sizeof(response));
@@ -634,7 +658,7 @@ static node *remove_node(node * *head, uint32_t target)
 	 printf("Remove node: %d\n", target);
 	    node *deleted_node = NULL;
 	    node *current = *head;
-	    
+
 	    if (current == NULL) {
             //This is an empty list
 	        deleted_node == NULL;
@@ -821,7 +845,7 @@ static node* allocate_node(){
 static BaseType_t unallocate_node(node* deleted_node){
     //Make sure the node isn't NULL, and isnt' connected to a list
     if(deleted_node != NULL && deleted_node->next == NULL){
-        
+
         deleted_node->task_ptr->t_handle = NULL;
         deleted_node->task_ptr->task_id = 0;
         deleted_node->task_ptr->type = periodic;
@@ -830,7 +854,7 @@ static BaseType_t unallocate_node(node* deleted_node){
         deleted_node->task_ptr->completion_time = 0;
         deleted_node->task_ptr->execution_time = 0;
 
-        vPortFree((void*)deleted_node)
+        vPortFree((void*)deleted_node);
         return pdPASS;
     }
     return pdFAIL;
