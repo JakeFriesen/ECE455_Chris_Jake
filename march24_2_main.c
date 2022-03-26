@@ -262,6 +262,8 @@ static void DD_Scheduler(void *pvParameters)
                 {
                 	insert_node_unsorted(&overdue_head, schedule_node);
                 }
+                //delete this task from F-scheduler
+                vTaskDelete(schedule_node->task_ptr->t_handle);
                 // Readjust priorities
                 adjust_priority(head);
                 // send message to generator to create periodic task again
@@ -347,11 +349,10 @@ static void Auxiliary_Task(void *pvParameters)
         }
         // delete the task!
 //        printf("AET %d, Task ID: %d count:%d\n", xTaskGetTickCount(), task_parameters->task_id, count);
-        if(dd_delete(task_parameters->task_id) == pdPASS){
-        	printf("deleting task!");
-            vTaskDelete(xTaskGetCurrentTaskHandle());
-        }else
+        printf("deleting task!");
+        if(!dd_delete(task_parameters->task_id) == pdPASS){
         	printf("Failed to delete Task!");
+        }
     }
 }
 
@@ -434,6 +435,7 @@ static BaseType_t dd_delete(uint32_t TaskToDelete)
                 printf("Deleted a Task!\n");
                 vQueueUnregisterQueue(deleteQueue_handle);
                 vQueueDelete(deleteQueue_handle);
+                vTaskDelete(xTaskGetCurrentTaskHandle());
                 return pdPASS;
             }
             else
