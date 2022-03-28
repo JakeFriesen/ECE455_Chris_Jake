@@ -854,9 +854,39 @@ static BaseType_t unallocate_node(node* deleted_node){
         deleted_node->task_ptr->completion_time = 0;
         deleted_node->task_ptr->execution_time = 0;
 
+        vPortFree((void*)deleted_node->task_ptr);
         vPortFree((void*)deleted_node);
         return pdPASS;
     }
     return pdFAIL;
-
 }
+
+static dd_task* allocate_task(){
+    dd_task * new_task = (dd_task*)pvPortMalloc(sizeof(dd_task));
+    //make sure the malloc worked
+    configASSERT(new_task);
+    //Set default values for node
+    new_task->type = periodic;
+    new_task->t_handle = NULL;
+    new_task->task_id = 0;
+    new_task->release_time = 0;
+    new_task->absolute_deadline = 0;
+    new_task->completion_time = 0;
+    new_task->execution_time = 0;
+
+    return new_task;
+}
+
+static BaseType_t unallocate_task (dd_task * deleted_task){
+    deleted_task->t_handle = NULL;
+    deleted_task->task_id = 0;
+    deleted_task->type = periodic;
+    deleted_task->release_time = 0;
+    deleted_task->absolute_deadline = 0;
+    deleted_task->completion_time = 0;
+    deleted_task->execution_time = 0;
+
+    vPortFree((void*)deleted_task);
+    return pdPASS;
+}
+
