@@ -109,6 +109,7 @@ static void adcSetup(void);
 static BaseType_t insert_node_unsorted(node * *head, node *new_node);
 static BaseType_t unallocate_node(node* deleted_node);
 static BaseType_t unallocate_task (dd_task * deleted_task);
+static node* allocate_node();
 
 
 /* Global Variables */
@@ -187,14 +188,10 @@ static void DD_Scheduler(void *pvParameters)
     message schedule_message;
     BaseType_t response = pdFAIL;
     CURRENT_SLEEP = 100; // This is for initialization and to give the generator task to have a chance to run at the start of the program.
-//    node deleted = NULL;
-    node *deleted = pvPortMalloc(sizeof(node*));
-	deleted->task_ptr = NULL;
+    //TODO: Determine if this memory addressing is sufficient
+    node *deleted = pvPortMalloc(sizeof(node*));//maybe doesn't have to be malloced if copying other nodes?
+	deleted->task_ptr = NULL;//Might be an issue if not mallocing space for the dd_task struct
 
-    // node *head_add = head;
-    // message gen_msg;
-    // node gen_data;
-    // gen_msg.DATA = &gen_data;
     START = xTaskGetTickCount();
     while (1)
     {
@@ -207,7 +204,9 @@ static void DD_Scheduler(void *pvParameters)
             switch (schedule_message.req)
             {
                 case create:;
-                	node *new_node = pvPortMalloc(sizeof(node*));
+                    //Making a new node, so need to allocate space
+                    //space for the task_ptr is already allocated (from generator)
+                    node *new_node = allocate_node();
 					new_node->task_ptr = schedule_message.task_ptr;
 					new_node->next = NULL;
                     if (insert_node(&head, new_node) == pdPASS)
@@ -225,8 +224,8 @@ static void DD_Scheduler(void *pvParameters)
                     if (deleted != NULL)
                     {
                         deleted->task_ptr->completion_time = xTaskGetTickCount() - START;
-                        vPortFree((void*)deleted->task_ptr);
-//                        insert_node_unsorted(&completed_head, deleted);
+                        // vPortFree((void*)deleted->task_ptr);
+                       insert_node_unsorted(&completed_head, deleted);
 
                         response = pdPASS;
                         xQueueSend(deleteQueue_handle, &response, 100);
@@ -856,4 +855,23 @@ static BaseType_t unallocate_task (dd_task * deleted_task){
 
     vPortFree((void*)deleted_task);
     return pdPASS;
+}
+
+static node* allocate_node(){
+    node* new_node = (node*)pvPortMalloc(sizeof(node));
+    // dd_task * new_task = (dd_task*)pvPortMalloc(sizeof(dd_task));
+    //Make sure there is mem available
+    configASSERT(new_node);
+    // configASSERT(new_task);
+    // new_node->task_ptr = new_task;
+    //Set default values for node
+    new_node->next = NULL;
+    new_node->task_ptr->type = periodic;
+    new_node->task_ptr->t_handle = NULL;
+    new_node->task_ptr->task_id = 0;
+    new_node->task_ptr->release_time = 0;
+    new_node->task_ptr->absolute_deadline = 0;
+    new_node->task_ptr->completion_time = 0;
+    new_node->task_ptr->execution_time = 0;
+    return new_node;
 }
