@@ -32,6 +32,14 @@
 #define SR_DATA GPIO_Pin_6
 #define SR_RST GPIO_Pin_8
 #define ADC_IN	GPIO_Pin_3
+//new print macro
+#define safe_printf(format_, ...)do{\
+									xSemaphoreTake(create_semaphore_handle, portMAX_DELAY);\
+									printf((format_), ##__VA_ARGS__);\
+									xSemaphoreGive(create_semaphore_handle);\
+									}while(0)
+
+
 
 // Then you need to define structures here :
 enum Task_Types {
@@ -108,7 +116,6 @@ static void gpioSetup (void );
 static void adcSetup(void);
 static BaseType_t insert_node_unsorted(node * *head, node *new_node);
 static BaseType_t unallocate_node(node* deleted_node);
-static BaseType_t unallocate_task (dd_task * deleted_task);
 
 
 /* Global Variables */
@@ -118,6 +125,9 @@ node * head = NULL;
 
 node * completed_head = NULL;
 node * overdue_head = NULL;
+uint32_t active_list_count = 0;
+uint32_t completed_list_count = 0;
+uint32_t overdue_list_count = 0;
 uint32_t EXECUTION = 0;
 uint32_t multiplier =0;
 volatile uint32_t utilization=0;
@@ -173,10 +183,10 @@ int main(void)
     xTaskCreate( Task_Generator, "GeneratingTask2", configMINIMAL_STACK_SIZE, (void*)gen_data2, GENERATOR_PRIO, NULL);
     xTaskCreate( Task_Generator, "GeneratingTask3", configMINIMAL_STACK_SIZE, (void*)gen_data3, GENERATOR_PRIO, NULL);
     xTaskCreate( Task_Monitor, "MonitorTask", configMINIMAL_STACK_SIZE, NULL, 4, NULL);
-    printf("Starting Scheduler!\n");
+    safe_printf("Starting Scheduler!\n");
     vTaskStartScheduler();
     for( ;; )
-    	printf("...\n"); // we should never get here!
+    	safe_printf("...\n"); // we should never get here!
     return 0;
 }
 
@@ -189,7 +199,6 @@ static void DD_Scheduler(void *pvParameters)
     message schedule_message;
     BaseType_t response = pdFAIL;
     CURRENT_SLEEP = 100; // This is for initialization and to give the generator task to have a chance to run at the start of the program.
-//    node *deleted = oc(sizeof(node*));
     node *deleted = NULL;
 	deleted->task_ptr = NULL;
     START = xTaskGetTickCount();
@@ -212,10 +221,10 @@ static void DD_Scheduler(void *pvParameters)
                     {
                         schedule_message.task_ptr->release_time = xTaskGetTickCount() - START;
                         response = pdPASS;
+                        active_list_count++;
                         xQueueSend(createQueue_handle, &response, 100);
-//                        printf("Schedule Task!\n");
                     }else{
-                    	printf("Failed to insert node");
+                    	safe_printf("Failed to insert node");
                     }
                     break;
                 case delete :
@@ -223,13 +232,13 @@ static void DD_Scheduler(void *pvParameters)
                     if (deleted != NULL)
                     {
                         deleted->task_ptr->completion_time = xTaskGetTickCount() - START;
-//                        vPortFree((void*)deleted->task_ptr);
                         insert_node_unsorted(&completed_head, deleted);
+                        completed_list_count ++;
+                        active_list_count--;
 
                         response = pdPASS;
                         xQueueSend(deleteQueue_handle, &response, 100);
                         vTaskDelete(deleted->task_ptr->t_handle);
-//                        printf("Deleted Task!\n");
                     }
                     break;
                 case active_task_list:
@@ -242,7 +251,7 @@ static void DD_Scheduler(void *pvParameters)
                     xQueueSend(overdueQueue_handle, &overdue_head, 100);
                     break;
                 default :
-                    printf("DDScheduler received an invalid msg!\n");
+                    safe_printf("DDScheduler received an invalid msg!\n");
                     break;
             }
             adjust_priority(head);
@@ -256,24 +265,23 @@ static void DD_Scheduler(void *pvParameters)
              * raise the priority of the next task in the ready queue */
             if (head != NULL)
             {
-//            	printf("Overdue\n");
                 /* deadline is reached */
                 // place task in overdue list; remove from active list
                 deleted = remove_node(&head, head->task_ptr->task_id);
                 if (deleted != NULL)
                 {
                 	insert_node_unsorted(&overdue_head, deleted);
+                	overdue_list_count ++;
+                	active_list_count--;
                 }
                 //Delete the task
                 vTaskDelete(deleted->task_ptr->t_handle);
                 // Readjust priorities
                 adjust_priority(head);
-                // send message to generator to create periodic task again
-                // TODO: complete here else
             } else
             {
                 CURRENT_SLEEP = 100;
-                printf("Nothing to do yet!\n");
+                safe_printf("Nothing to do yet!\n");
             }
         }
     }
@@ -290,17 +298,13 @@ static void Task_Generator(void *pvParameters)
 	uint32_t current_task = ((gen_data*)pvParameters)->task_id;
 	uint32_t execution_time = ((gen_data*)pvParameters)->execution_time;
 	enum Task_Types type = periodic;
-//    printf("Task Generator\n");
     while (1)
     {
-//    	xSemaphoreTake(create_semaphore_handle, 100);
     	if (dd_create(type, current_task, absolute_deadline, execution_time , "USER_TASK") == pdFAIL){
-    	        printf("dd_tcreate Failed!\n");
+    	        safe_printf("dd_tcreate Failed!\n");
     	}
-//    	xSemaphoreGive(create_semaphore_handle);
 		absolute_deadline += relative_deadline;
 		current_task ++;
-//		printf("Delaying in Generator\n");
 		vTaskDelay(relative_deadline);
     }
 }
@@ -313,16 +317,15 @@ static void Task_Monitor(void *pvParameters)
 {
     while (1)
     {
-        printf("Current time: %d\n", xTaskGetTickCount() - START);
-        printf("System idle time is %d\n", utilization);
-        printf("ACTIVE TASKS: \n");
+    	vTaskDelay(1500);
+        safe_printf("\nCurrent time: %d\n", xTaskGetTickCount() - START);
+        safe_printf("System idle time is %d\n", utilization);
+        safe_printf("ACTIVE TASKS: %d \n", active_list_count);
         dd_return_active_list();
-        printf("\nCOMPLETED TASKS: \n");
+        safe_printf("\nCOMPLETED TASKS: %d \n", completed_list_count);
         dd_return_complete_list();
-        printf("\nOVERDUE TASKS: \n");
+        safe_printf("\nOVERDUE TASKS: %d \n", overdue_list_count);
         dd_return_overdue_list();
-        printf("Finish time: %d\n", xTaskGetTickCount() - START);
-        vTaskDelay(1500);
     }
 }
 
@@ -340,10 +343,9 @@ static void Auxiliary_Task(void *pvParameters)
         	//nothing
         }
         // delete the task!
-        if(dd_delete(task_parameters->task_id) == pdPASS){
-//            vTaskDelete(xTaskGetCurrentTaskHandle());
-        }else
-        	printf("Failed to delete Task!");
+        if(dd_delete(task_parameters->task_id) != pdPASS){
+        	safe_printf("Failed to delete Task!");
+        }
     }
 }
 
@@ -354,7 +356,6 @@ static void Auxiliary_Task(void *pvParameters)
 //static BaseType_t dd_create(dd_task  task_data, const char *const task_name)
 static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t absolute_deadline, uint32_t execution_time, const char *const task_name)
 {
-//    printf("dd_tcreate. Name: %s, task id: %d\n", task_name, task_id);
     BaseType_t response = pdFAIL;
     TaskHandle_t Task_thandle = NULL;//task handle
     dd_task* task_data = (dd_task *) pvPortMalloc(sizeof(dd_task));
@@ -366,33 +367,20 @@ static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t abs
 	task_data->absolute_deadline = absolute_deadline;
 	task_data->completion_time = 0;
 	task_data->execution_time = execution_time;
-//    dd_task task_data = {
-//    		.t_handle = Task_thandle,
-//			.task_id = task_id,
-//    		.type = type,
-//			.release_time = 0,
-//			.absolute_deadline = absolute_deadline,
-//			.completion_time = 0,
-//			.execution_time = execution_time
-//    };
-//    printf("dd_Create: execution time: %d, absolute deadline: %d\n", task_data->execution_time, task_data->absolute_deadline);
     message message_create = {
     		.req = create,
 			.task_ptr = task_data
     };
     //return queue to get response from scheduler
-//    createQueue_handle = xQueueCreate(message_QUEUE_LENGTH, sizeof(response));
-//    vQueueAddToRegistry(createQueue_handle, "CreateQueue");
 
     //Create a new task
-    //TODO: Switch this back to aux_STACK_SIZE
     if (xTaskCreate(Auxiliary_Task, task_name, configMINIMAL_STACK_SIZE, (void*)(task_data), LOW_PRIO,&Task_thandle) == pdPASS)
     {
         //Add new task to the message
     	if(Task_thandle != NULL){
     		message_create.task_ptr->t_handle = Task_thandle;
     	} else {
-    		printf("failed to get task handle in dd_create");
+    		safe_printf("failed to get task handle in dd_create");
     		return pdFAIL;
     	}
 
@@ -402,18 +390,15 @@ static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t abs
 			if ((BaseType_t)response == pdPASS)
 			{
 				return pdPASS;
-//                    printf("Created new Task!\n");
-//                    vQueueUnregisterQueue(createQueue_handle);
-//                    vQueueDelete(createQueue_handle);
 			}
 			else {
-				printf("Scheduler failed to schedule new task\n");
+				safe_printf("Scheduler failed to schedule new task\n");
 			}
         }
     }
     else
     {
-        printf("Cannot Create Auxiliary task at the moment!\n");
+        safe_printf("Cannot Create Auxiliary task at the moment!\n");
     }
 
     vTaskDelete(Task_thandle);
@@ -426,7 +411,6 @@ static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t abs
  */
 static BaseType_t dd_delete(uint32_t TaskToDelete)
 {
-//    printf("dd_delete: %d\n", TaskToDelete);
     BaseType_t response = pdFAIL;
     message message_delete;
     dd_task deleteTask;
@@ -446,7 +430,6 @@ static BaseType_t dd_delete(uint32_t TaskToDelete)
         {
             if (response == pdPASS)
             {
-//                printf("Deleted a Task!\n");
                 vQueueUnregisterQueue(deleteQueue_handle);
                 vQueueDelete(deleteQueue_handle);
                 return pdPASS;
@@ -464,7 +447,6 @@ static BaseType_t dd_delete(uint32_t TaskToDelete)
  */
 static BaseType_t dd_return_active_list(void)
 {
-//    printf("Return Active list\n");
     node *response = NULL;
     message message_active;
     message_active.req = active_task_list;
@@ -486,7 +468,7 @@ static BaseType_t dd_return_active_list(void)
         }
     }
 
-	printf("Cannot send msg to the scheduler!\n");
+	safe_printf("Cannot send msg to the scheduler!\n");
 	return pdFAIL;
 
 }
@@ -497,7 +479,6 @@ static BaseType_t dd_return_active_list(void)
  */
 static BaseType_t dd_return_overdue_list(void)
 {
-//    printf("Return overdue list\n");
     node *response = NULL;
     message message_overdue;
     message_overdue.req = overdue_task_list;
@@ -522,7 +503,7 @@ static BaseType_t dd_return_overdue_list(void)
     }
     else
     {
-        printf("Cannot send msg to the scheduler!\n");
+        safe_printf("Cannot send msg to the scheduler!\n");
         return pdFAIL;
     }
     return pdPASS;
@@ -533,7 +514,6 @@ static BaseType_t dd_return_overdue_list(void)
  */
 static BaseType_t dd_return_complete_list(void)
 {
-//    printf("Return completed list\n");
     node *response = NULL;
     message message_completed;
     message_completed.req = completed_task_list;
@@ -555,7 +535,7 @@ static BaseType_t dd_return_complete_list(void)
                 return pdFAIL;
         }
     }
-	printf("Cannot send msg to the scheduler!\n");
+	safe_printf("Cannot send msg to the scheduler!\n");
 	return pdFAIL;
 
 }
@@ -566,7 +546,6 @@ static BaseType_t dd_return_complete_list(void)
  */
 static BaseType_t insert_node(node **head, node * new_node)
 {
-//	printf("Insert node: %x\n", (char*)new_node->task_ptr->t_handle);
 	    node *current = *head;
 	    node *previous = *head;
 	    int count = 0;
@@ -581,7 +560,6 @@ static BaseType_t insert_node(node **head, node * new_node)
 	        *head = new_node;
 	        (*head)->next = current;
 	    }else{
-//	    	printf("list search\n");
 	        //search through list for place
 	        while(current != NULL && (current->task_ptr->absolute_deadline <= new_node->task_ptr->absolute_deadline)
 	        	&& count < 10){
@@ -589,12 +567,8 @@ static BaseType_t insert_node(node **head, node * new_node)
 	            current = current->next;//increment to the next node
 	            count ++;
 	        }
-	        if(count == 10){
-	        	printf("FUCK");
-	        }
 	        //current node now has a later deadline than the new node
 	        //head->....->previous->new_node->current
-//	        printf("add to list\n");
 	        previous->next = new_node;
 	        new_node->next = current;
 	    }
@@ -609,13 +583,9 @@ static BaseType_t insert_node(node **head, node * new_node)
 */
 void adjust_priority(node * head)
 {
-//	printf("Adjust Priority\n");
-//    UBaseType_t priority;
-//	while(1);
     if (head == NULL)
     {
         // no task. sleep so task generator can create some tasks ...
-//    	printf("No Tasks!\n");
         return;
     }
     // NOTE: at any given time, only one task (the head) should have 'high priority'
@@ -623,26 +593,21 @@ void adjust_priority(node * head)
     TaskHandle_t task_handle = head->task_ptr->t_handle;
     if (uxTaskPriorityGet(task_handle) != (UBaseType_t)HIGH_PRIO)
     {
-//    	printf("Head != NULL\n");
         // set head to highest priority
         vTaskPrioritySet(task_handle, (UBaseType_t)HIGH_PRIO);
         // set next element to low priority
         // Second element should always be the high priority because we update after every change
         if(head->next != NULL){
-//        	printf("Head->next is not NULL\n");
         	task_handle = head->next->task_ptr->t_handle;
 			vTaskPrioritySet(task_handle, (UBaseType_t)LOW_PRIO);
         }
     }
-//    printf("before sleep\n");
     CURRENT_SLEEP = head->task_ptr->absolute_deadline - (xTaskGetTickCount() - START);
-//    printf("Adjusting priority, head: %x, sleep time: %d\n", (char*)head->task_ptr->t_handle, CURRENT_SLEEP);
 };
 
 /* Remove a specified task_list from a task list */
 static node *remove_node(node * *head, uint32_t target)
 {
-//	 printf("Remove node: %d\n", target);
 	    node *deleted_node = NULL;
 	    node *current = *head;
 	    // target is head of list
@@ -650,7 +615,6 @@ static node *remove_node(node * *head, uint32_t target)
 	        return current;
 	    } else if (current->task_ptr->task_id == target)
 	    {
-//	    	printf("target is the head\n");
 	        deleted_node = current;
 	        *head = current->next;
 	    }
@@ -706,20 +670,11 @@ static BaseType_t insert_node_unsorted(node * *head, node *new_node){
 void print_list(node * head)
 {
     node *current = head;
-	TaskStatus_t taskDetails;
     // traverse the list, printing each task_list's id, execution time, and deadline
-	char name[10];
-	uint32_t response_time;
     while (current != NULL)
     {
-		if (current->task_ptr->completion_time == 0) {
-			response_time = 0;
-		} else {
-			response_time = current->task_ptr->completion_time - current->task_ptr->release_time;
-		}
-//		sprintf(&name, "Task %d", current->task_ptr->task_id);
-        printf("Name: Task %d, exec_time = %d, deadline = %d, response time = %d, release time = %d, completed time = %d\n", current->task_ptr->task_id,
-                current->task_ptr->execution_time, current->task_ptr->absolute_deadline,  response_time, current->task_ptr->release_time, current->task_ptr->completion_time);
+        safe_printf("Task %d, exec = %d, dl = %d, rt = %d, ct = %d\n", current->task_ptr->task_id,
+                current->task_ptr->execution_time, current->task_ptr->absolute_deadline, current->task_ptr->release_time, current->task_ptr->completion_time);
         current = current->next;
     }
 }
@@ -775,8 +730,6 @@ static void prvSetupHardware(void)
     http://www.freertos.org/RTOS-Cortex-M3-M4.html */
     NVIC_SetPriorityGrouping(0);
     utilization++;
-    /* TODO: Setup the clocks, etc. here, if they were not configured before
-    main() was called. */
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
 	gpioSetup();
@@ -833,3 +786,4 @@ static BaseType_t unallocate_node(node* deleted_node){
     }
     return pdFAIL;
 }
+
