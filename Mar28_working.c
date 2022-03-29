@@ -153,15 +153,18 @@ int main(void)
 	vQueueAddToRegistry( xDDSG_Queue_handle, "SchedulePeriodicQueue" );
     /* Start the tasks and timer running. */
 	gen_data *gen_data1 = (gen_data*)pvPortMalloc(sizeof(gen_data));
+	configASSERT(gen_data1);
 	gen_data1->task_id = 100;
 	gen_data1->execution_time = 100;
 	gen_data1->relative_deadline = 500;
 	gen_data *gen_data2 = (gen_data*)pvPortMalloc(sizeof(gen_data));
+	configASSERT(gen_data2);
 	gen_data2->task_id = 200;
 	gen_data2->execution_time = 200;
 	gen_data2->relative_deadline = 500;
 	gen_data *gen_data3 = (gen_data*)pvPortMalloc(sizeof(gen_data));
-	gen_data3->task_id = 200;
+	configASSERT(gen_data3);
+	gen_data3->task_id = 300;
 	gen_data3->execution_time = 200;
 	gen_data3->relative_deadline = 500;
 
@@ -186,14 +189,9 @@ static void DD_Scheduler(void *pvParameters)
     message schedule_message;
     BaseType_t response = pdFAIL;
     CURRENT_SLEEP = 100; // This is for initialization and to give the generator task to have a chance to run at the start of the program.
-//    node deleted = NULL;
-    node *deleted = pvPortMalloc(sizeof(node*));
+//    node *deleted = oc(sizeof(node*));
+    node *deleted = NULL;
 	deleted->task_ptr = NULL;
-
-    // node *head_add = head;
-    // message gen_msg;
-    // node gen_data;
-    // gen_msg.DATA = &gen_data;
     START = xTaskGetTickCount();
     while (1)
     {
@@ -207,6 +205,7 @@ static void DD_Scheduler(void *pvParameters)
             {
                 case create:;
                 	node *new_node = pvPortMalloc(sizeof(node*));
+                	configASSERT(new_node);
 					new_node->task_ptr = schedule_message.task_ptr;
 					new_node->next = NULL;
                     if (insert_node(&head, new_node) == pdPASS)
@@ -229,6 +228,7 @@ static void DD_Scheduler(void *pvParameters)
 
                         response = pdPASS;
                         xQueueSend(deleteQueue_handle, &response, 100);
+                        vTaskDelete(deleted->task_ptr->t_handle);
 //                        printf("Deleted Task!\n");
                     }
                     break;
@@ -321,6 +321,7 @@ static void Task_Monitor(void *pvParameters)
         dd_return_complete_list();
         printf("\nOVERDUE TASKS: \n");
         dd_return_overdue_list();
+        printf("Finish time: %d\n", xTaskGetTickCount() - START);
         vTaskDelay(1500);
     }
 }
@@ -332,27 +333,15 @@ static void Task_Monitor(void *pvParameters)
 static void Auxiliary_Task(void *pvParameters)
 {
     dd_task *task_parameters = (dd_task *)pvParameters;
-//    23760
     uint32_t cycles = (task_parameters->execution_time) * (24000);
-//    int count = 0;
-//    printf("Aux task start. ex time: %d Task ID: %d, abs deadline: %d\n", cycles, task_parameters->task_id, task_parameters->absolute_deadline);
-//
-//    printf("AST starting at %d\n", xTaskGetTickCount());
     while (1)
     {
-//    	TickType_t task_start = xTaskGetTickCount();
-//        while (xTaskGetTickCount() < task_start+cycles){
     	while (cycles--){
-//    		while(xTaskGetTickCount() < (task_start + 1)){};
-//			task_start = xTaskGetTickCount();
-//        	count++;
         	//nothing
         }
         // delete the task!
-//        printf("AET %d, Task ID: %d\n", xTaskGetTickCount(), task_parameters->task_id);
         if(dd_delete(task_parameters->task_id) == pdPASS){
-//        	printf("deleting task!");
-            vTaskDelete(xTaskGetCurrentTaskHandle());
+//            vTaskDelete(xTaskGetCurrentTaskHandle());
         }else
         	printf("Failed to delete Task!");
     }
@@ -397,7 +386,7 @@ static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t abs
 
     //Create a new task
     //TODO: Switch this back to aux_STACK_SIZE
-    if (xTaskCreate(Auxiliary_Task, task_name, 200, (void*)(task_data), LOW_PRIO,&Task_thandle) == pdPASS)
+    if (xTaskCreate(Auxiliary_Task, task_name, configMINIMAL_STACK_SIZE, (void*)(task_data), LOW_PRIO,&Task_thandle) == pdPASS)
     {
         //Add new task to the message
     	if(Task_thandle != NULL){
@@ -647,7 +636,7 @@ void adjust_priority(node * head)
     }
 //    printf("before sleep\n");
     CURRENT_SLEEP = head->task_ptr->absolute_deadline - (xTaskGetTickCount() - START);
-    printf("Adjusting priority, head: %x, sleep time: %d\n", (char*)head->task_ptr->t_handle, CURRENT_SLEEP);
+//    printf("Adjusting priority, head: %x, sleep time: %d\n", (char*)head->task_ptr->t_handle, CURRENT_SLEEP);
 };
 
 /* Remove a specified task_list from a task list */
@@ -685,7 +674,7 @@ static BaseType_t insert_node_unsorted(node * *head, node *new_node){
 	//put the new node at the end of the list
 	node *current = *head;
 	node *top = *head;
-	int count = 0;
+	int count = 1;
 
 	if(top == NULL){
 		//empty list
@@ -694,8 +683,6 @@ static BaseType_t insert_node_unsorted(node * *head, node *new_node){
 		*head = top;
 		return pdPASS;
 	}
-	//TODO: REMOVE
-//	while(1);
 	while(current->next != NULL){
 		current = current->next;
 		count ++;
@@ -705,7 +692,7 @@ static BaseType_t insert_node_unsorted(node * *head, node *new_node){
 	current->next = new_node;
 	new_node->next = NULL;
     //Limit list size to 10 items (delete top items)
-    if(count > 10){
+    if(count >= 10){
         node * node_to_delete = *head;
         *head = node_to_delete->next;
         node_to_delete->next = NULL;
@@ -730,9 +717,9 @@ void print_list(node * head)
 		} else {
 			response_time = current->task_ptr->completion_time - current->task_ptr->release_time;
 		}
-		sprintf(&name, "Task %d", current->task_ptr->task_id);
-        printf("Name: %s, exec_time = %d, deadline = %d, response time = %d\n", name,
-                current->task_ptr->execution_time, current->task_ptr->absolute_deadline, response_time);
+//		sprintf(&name, "Task %d", current->task_ptr->task_id);
+        printf("Name: Task %d, exec_time = %d, deadline = %d, response time = %d, release time = %d, completed time = %d\n", current->task_ptr->task_id,
+                current->task_ptr->execution_time, current->task_ptr->absolute_deadline,  response_time, current->task_ptr->release_time, current->task_ptr->completion_time);
         current = current->next;
     }
 }
@@ -754,8 +741,8 @@ void vApplicationMallocFailedHook(void)
 {
     /* The malloc failed hook is enabled by setting
     configUSE_MALLOC_FAILED_HOOK to 1 in FreeRTOSConfig.h.
-    Called if a call to pvPortMalloc() fails because there is insufficient
-    free memory available in the FreeRTOS heap. pvPortMalloc() is called
+    Called if a call to oc() fails because there is insufficient
+    free memory available in the FreeRTOS heap. oc() is called
     internally by FreeRTOS API functions that create tasks, queues, software
     timers, and semaphores. The size of the FreeRTOS heap is set by the
     configTOTAL_HEAP_SIZE configuration constant in FreeRTOSConfig.h. */
