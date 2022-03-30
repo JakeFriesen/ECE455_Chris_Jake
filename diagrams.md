@@ -94,3 +94,43 @@
     deactivate Monitor
 @enduml
 ```
+
+```plantuml
+@startuml
+component DD_Scheduler{
+
+}
+rectangle dd_create
+rectangle dd_delete
+rectangle dd_return_active_list
+rectangle dd_return_completed_list
+rectangle dd_return_overdue_list
+component Task_Generator
+component Task_Monitor
+component Auxillary_Task
+queue DDS_queue
+queue create_queue
+queue delete_queue
+queue active_list_queue
+queue completed_list_queue
+queue overdue_list_queue
+DD_Scheduler <- DDS_queue
+dd_create -> DDS_queue
+dd_delete -> DDS_queue
+dd_return_active_list -> DDS_queue
+dd_return_completed_list -> DDS_queue
+dd_return_overdue_list -> DDS_queue
+DD_Scheduler -> create_queue
+DD_Scheduler -> delete_queue
+DD_Scheduler -> active_list_queue
+DD_Scheduler -> overdue_list_queue
+DD_Scheduler -> completed_list_queue
+Task_Generator -> dd_create
+Task_Monitor -> dd_return_active_list
+Task_Monitor -> dd_return_completed_list
+Task_Monitor -> dd_return_overdue_list
+
+
+
+@enduml
+```
