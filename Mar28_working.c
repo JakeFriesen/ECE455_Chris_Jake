@@ -75,6 +75,7 @@ typedef struct gen_data
 	uint32_t execution_time;
 	uint32_t relative_deadline;
 	uint32_t task_id;
+	enum Task_Types type;
 } gen_data;
 
 
@@ -168,16 +169,19 @@ int main(void)
 	gen_data1->task_id = 100;
 	gen_data1->execution_time = 100;
 	gen_data1->relative_deadline = 500;
+	gen_data1->type = periodic;
 	gen_data *gen_data2 = (gen_data*)pvPortMalloc(sizeof(gen_data));
 	configASSERT(gen_data2);
 	gen_data2->task_id = 200;
 	gen_data2->execution_time = 200;
 	gen_data2->relative_deadline = 500;
+	gen_data2->type = periodic;
 	gen_data *gen_data3 = (gen_data*)pvPortMalloc(sizeof(gen_data));
 	configASSERT(gen_data3);
 	gen_data3->task_id = 300;
 	gen_data3->execution_time = 200;
 	gen_data3->relative_deadline = 500;
+	gen_data3->type = periodic;
 
     /* Start the tasks and timer running. */
     xTaskCreate( DD_Scheduler, "DeadlineDrivenSchedulerTask", configMINIMAL_STACK_SIZE, NULL, DD_SCHEDULER_PRIO, NULL);
@@ -300,7 +304,7 @@ static void Task_Generator(void *pvParameters)
 	uint32_t absolute_deadline = xTaskGetTickCount() - START + relative_deadline;
 	uint32_t current_task = ((gen_data*)pvParameters)->task_id;
 	uint32_t execution_time = ((gen_data*)pvParameters)->execution_time;
-	enum Task_Types type = periodic;
+	enum Task_Types type = ((gen_data*)pvParameters)->type;
     while (1)
     {
     	if (dd_create(type, current_task, absolute_deadline, execution_time , "USER_TASK") == pdFAIL){
@@ -309,6 +313,9 @@ static void Task_Generator(void *pvParameters)
 		absolute_deadline += relative_deadline;
 		current_task ++;
 		vTaskDelay(relative_deadline);
+		if(type == aperiodic){
+			break;
+		}
     }
 }
 
@@ -795,4 +802,3 @@ static BaseType_t unallocate_node(node* deleted_node){
     }
     return pdFAIL;
 }
-
