@@ -47,7 +47,7 @@ enum Task_Types {
     aperiodic
 } Task_Types;
 
-//Request Types
+// Request Types
 enum Request_Types
 {
     create,
@@ -57,6 +57,7 @@ enum Request_Types
     overdue_task_list
 } Request_Types;
 
+// Task Structure
 typedef struct
 {
     TaskHandle_t t_handle;
@@ -68,6 +69,7 @@ typedef struct
     uint32_t execution_time;
 } dd_task;
 
+// Generator Data
 typedef struct gen_data
 {
 	uint32_t execution_time;
@@ -156,12 +158,11 @@ int main(void)
     /* Create the queue used by the queue send and queue receive tasks. */
 	xDDSQueue_handle = xQueueCreate(schedule_QUEUE_LENGTH, sizeof( message ) );
     xDDSG_Queue_handle = xQueueCreate(schedule_QUEUE_LENGTH, sizeof( message ) );
-    createQueue_handle = xQueueCreate(message_QUEUE_LENGTH, sizeof(BaseType_t));
     /* Add to the registry, for the benefit of kernel aware debugging. */
-    vQueueAddToRegistry(createQueue_handle, "CreateQueue");
 	vQueueAddToRegistry( xDDSQueue_handle, "ScheduleQueue" );
 	vQueueAddToRegistry( xDDSG_Queue_handle, "SchedulePeriodicQueue" );
-    /* Start the tasks and timer running. */
+    
+    /* Create Generator data structures to pass to each generator*/
 	gen_data *gen_data1 = (gen_data*)pvPortMalloc(sizeof(gen_data));
 	configASSERT(gen_data1);
 	gen_data1->task_id = 100;
@@ -178,6 +179,7 @@ int main(void)
 	gen_data3->execution_time = 200;
 	gen_data3->relative_deadline = 500;
 
+    /* Start the tasks and timer running. */
     xTaskCreate( DD_Scheduler, "DeadlineDrivenSchedulerTask", configMINIMAL_STACK_SIZE, NULL, DD_SCHEDULER_PRIO, NULL);
     xTaskCreate( Task_Generator, "GeneratingTask1", configMINIMAL_STACK_SIZE, (void*)gen_data1, GENERATOR_PRIO, NULL);
     xTaskCreate( Task_Generator, "GeneratingTask2", configMINIMAL_STACK_SIZE, (void*)gen_data2, GENERATOR_PRIO, NULL);
@@ -198,7 +200,7 @@ static void DD_Scheduler(void *pvParameters)
 {
     message schedule_message;
     BaseType_t response = pdFAIL;
-    CURRENT_SLEEP = 100; // This is for initialization and to give the generator task to have a chance to run at the start of the program.
+    CURRENT_SLEEP = 100; 
     node *deleted = NULL;
 	deleted->task_ptr = NULL;
     START = xTaskGetTickCount();
@@ -210,9 +212,10 @@ static void DD_Scheduler(void *pvParameters)
         meet their deadline. */
         if (xQueueReceive(xDDSQueue_handle, &schedule_message, CURRENT_SLEEP))
         {
+            // Message Types
             switch (schedule_message.req)
             {
-                case create:;
+                case create:; //Create a new task
                 	node *new_node = pvPortMalloc(sizeof(node*));
                 	configASSERT(new_node);
 					new_node->task_ptr = schedule_message.task_ptr;
@@ -227,7 +230,7 @@ static void DD_Scheduler(void *pvParameters)
                     	safe_printf("Failed to insert node");
                     }
                     break;
-                case delete :
+                case delete : //Delete a task
                     deleted = remove_node(&head, schedule_message.task_ptr->task_id);
                     if (deleted != NULL)
                     {
@@ -241,13 +244,13 @@ static void DD_Scheduler(void *pvParameters)
                         vTaskDelete(deleted->task_ptr->t_handle);
                     }
                     break;
-                case active_task_list:
+                case active_task_list:// Send Active List 
                     xQueueSend(activeQueue_handle, &head, 100);
                     break;
-                case completed_task_list:
+                case completed_task_list:// Send Completed List
                     xQueueSend(completedQueue_handle, &completed_head, 100);
                     break;
-                case overdue_task_list:
+                case overdue_task_list:// Send Overdue List
                     xQueueSend(overdueQueue_handle, &overdue_head, 100);
                     break;
                 default :
@@ -372,7 +375,8 @@ static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t abs
 			.task_ptr = task_data
     };
     //return queue to get response from scheduler
-
+    createQueue_handle = xQueueCreate(message_QUEUE_LENGTH, sizeof(BaseType_t));
+    vQueueAddToRegistry(createQueue_handle, "CreateQueue");
     //Create a new task
     if (xTaskCreate(Auxiliary_Task, task_name, configMINIMAL_STACK_SIZE, (void*)(task_data), LOW_PRIO,&Task_thandle) == pdPASS)
     {
@@ -389,6 +393,8 @@ static BaseType_t dd_create(enum Task_Types type, uint32_t task_id, uint32_t abs
         {
 			if ((BaseType_t)response == pdPASS)
 			{
+                vQueueUnregisterQueue(createQueue_handlev);
+                vQueueDelete(createQueue_handle);
 				return pdPASS;
 			}
 			else {
@@ -461,6 +467,8 @@ static BaseType_t dd_return_active_list(void)
             {
                 //active list is now the response
                 print_list(response);
+                vQueueUnregisterQueue(activeQueue_handle);
+                vQueueDelete(activeQueue_handle);
                 return pdPASS;
             }
             else
@@ -674,7 +682,8 @@ void print_list(node * head)
     while (current != NULL)
     {
         safe_printf("Task %d, exec = %d, dl = %d, rt = %d, ct = %d\n", current->task_ptr->task_id,
-                current->task_ptr->execution_time, current->task_ptr->absolute_deadline, current->task_ptr->release_time, current->task_ptr->completion_time);
+                current->task_ptr->execution_time, current->task_ptr->absolute_deadline, 
+                current->task_ptr->release_time, current->task_ptr->completion_time);
         current = current->next;
     }
 }
